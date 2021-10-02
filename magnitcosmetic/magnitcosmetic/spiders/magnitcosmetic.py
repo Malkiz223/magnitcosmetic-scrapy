@@ -139,7 +139,7 @@ class MagnitcosmeticSpider(scrapy.Spider):
         price_dict: dict = json.loads(response.text)  # получаем от POST-запроса на catalog_load_remains.php
         try:
             price_data: dict = price_dict.get('data')[0]
-        except IndexError:
+        except (IndexError, TypeError):
             price_data = {}
         quantity = price_data.get('quantity')
         original_price = float(price_data.get('price', 0))  # сделать условную цену в -1, если не пришла цена?
