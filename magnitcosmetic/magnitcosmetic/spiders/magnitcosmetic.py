@@ -116,26 +116,9 @@ class MagnitcosmeticSpider(scrapy.Spider):
             'variants': 1
         }
 
-        # TODO перенести в отдельную функцию, передавать response и product_data?
-
-        # пытаемся найти PRODUCT_XML_CODE, нужен для POST-запроса, чтобы узнать цену товара
-        xml_code_pattern = re.compile(r"PRODUCT_XML_CODE = (.*)")  # var PROD...CODE = {"123": 123}
-        tag_with_product_xml_code = response.xpath("//script[contains(., 'PRODUCT_XML_CODE')]/text()").get()
-        # если товар частично убран с сайта, то PRODUCT_XML_CODE будет равен строке '[0]'
-        # пример товара: https://magnitcosmetic.ru/catalog/bytovaya_khimiya/stiralnye_poroshki_geli_kapsuly/52098/
-        try:
-            json_with_product_ids: str = xml_code_pattern.search(tag_with_product_xml_code).group(1)
-            data_json: dict = json.loads(json_with_product_ids)
-            product_key = [key for key in data_json.keys()][0]
-            product_value = data_json.get(product_key, 0)
-        except (TypeError, IndexError, AttributeError, json.JSONDecodeError):
-            product_key = ''
-            product_value = ''
-
-        body: str = f'SHOP_XML_CODE={self.shop_xml_code}&PRODUCTS%5B{product_key}%5D={product_value}&enigma=1&ism=Y'
         yield scrapy.Request(
             url=self.catalog_load_remains_url,
-            body=body,
+            body=self._get_request_body_for_get_price(response),
             method='POST',
             headers={'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
                      'X-Requested-With': 'XMLHttpRequest',
@@ -176,3 +159,32 @@ class MagnitcosmeticSpider(scrapy.Spider):
             'count': 0
         }
         yield product_data
+
+    def _get_request_body_for_get_price(self, response):
+        """
+        На странице товара есть тег <script>, содержащий информацию для идентификации товара. Эта информация
+        потребуется для POST-запроса к API сайта и получения актуальной цены на товар,
+        поскольку цена не указывается в теле базового HTML.
+
+        SHOP_XML_CODE - код магазина, цену в котором мы пытаемся узнать. Указываем при инициализации класса.
+        В оригинальном теле запроса указывается enigma, она находится в input.remains__detail::attr(value) страницы,
+        но API принимает запрос с любой ненулевой энигмой.
+        В оригинальном теле запроса имеются параметры JUST_ONE, wru и type, которые можно опустить,
+        если параметр ism указать как Y (по умолчанию стоит N).
+        """
+        # пытаемся найти PRODUCT_XML_CODE, нужен для POST-запроса, чтобы узнать цену товара
+        xml_code_pattern = re.compile(r"PRODUCT_XML_CODE = (.*)")  # var PROD...CODE = {"123": 123}
+        tag_with_product_xml_code = response.xpath("//script[contains(., 'PRODUCT_XML_CODE')]/text()").get()
+        # если товар частично убран с сайта, то PRODUCT_XML_CODE будет равен строке '[0]'
+        # пример товара: https://magnitcosmetic.ru/catalog/bytovaya_khimiya/stiralnye_poroshki_geli_kapsuly/52098/
+        try:
+            json_with_product_ids: str = xml_code_pattern.search(tag_with_product_xml_code).group(1)
+            data_json: dict = json.loads(json_with_product_ids)
+            product_key = [key for key in data_json.keys()][0]
+            product_value = data_json.get(product_key, 0)
+        except (TypeError, IndexError, AttributeError, json.JSONDecodeError):
+            product_key = ''
+            product_value = ''
+
+        body: str = f'SHOP_XML_CODE={self.shop_xml_code}&PRODUCTS%5B{product_key}%5D={product_value}&enigma=1&ism=Y'
+        return body
