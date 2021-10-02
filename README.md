@@ -11,6 +11,30 @@
 - :white_check_mark: Сбор данных с учётом региона - Москва
 - :white_check_mark: Сохранение данных в .json файле 
 
+## Установка и настройка
+
+Установите [Python 3.6+](https://www.python.org/)
+
+Клонируйте проект, запустив в терминале команду:<br>
+```git clone https://github.com/Malkiz223/magnitcosmetic-scrapy.git && cd magnitcosmetic-scrapy```<br>
+
+Активируйте виртуальное окружение следующей командой (в зависимости от ОС и терминала):<br>
+`venv\Scripts\activate.bat` # Windows, командная строка<br>
+`venv\Scripts\activate.ps1` # Windows, PowerShell<br>
+`source venv\Scripts\activate` # Linux
+
+Установите зависимости:<br>
+`pip install -r requirements.txt`
+
+Замените тестовые прокси на свои в файле `magnitcosmetic/magnitcosmetic/spiders/magnitcosmetic.py` в списке proxy_list
+
+## Запуск
+
+После установки и настройки мы готовы приступить к первому запуску. Перейдите в основную директорию проекта и запустите следующую команду:<br>
+`scrapy runspider magnitcosmetic/magnitcosmetic/spiders/magnitcosmetic.py -o my_json_file_name.json`
+
+Флаг -o позволяет сохранить полученные данные в файл.
+
 <details> 
 <summary>Задача:</summary>
 
