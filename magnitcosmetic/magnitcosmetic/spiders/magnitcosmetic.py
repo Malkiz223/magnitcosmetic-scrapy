@@ -1,6 +1,5 @@
 import json
 import random
-import re
 from datetime import datetime
 
 import scrapy
@@ -172,14 +171,11 @@ class MagnitcosmeticSpider(scrapy.Spider):
         - В оригинальном теле запроса имеются параметры JUST_ONE, wru и type, которые можно опустить,
         если параметр ism указать как Y (по умолчанию стоит N).
         """
-        # пытаемся найти PRODUCT_XML_CODE, нужен для POST-запроса, чтобы узнать цену товара
-        xml_code_pattern = re.compile(r"PRODUCT_XML_CODE = (.*)")  # var PROD...CODE = {"123": 123}
-        tag_with_product_xml_code = response.xpath("//script[contains(., 'PRODUCT_XML_CODE')]/text()").get()
         # если товар частично убран с сайта, то PRODUCT_XML_CODE будет равен строке '[0]'
         # пример товара: https://magnitcosmetic.ru/catalog/bytovaya_khimiya/stiralnye_poroshki_geli_kapsuly/52098/
+        data = response.xpath("//script[contains(., 'PRODUCT_XML_CODE')]/text()").re('PRODUCT_XML_CODE = {(.*)')
         try:
-            json_with_product_ids: str = xml_code_pattern.search(tag_with_product_xml_code).group(1)
-            data_json: dict = json.loads(json_with_product_ids)
+            data_json: dict = json.loads(data[0])
             product_key = [key for key in data_json.keys()][0]
             product_value = data_json.get(product_key, 0)
         except (TypeError, IndexError, AttributeError, json.JSONDecodeError):
