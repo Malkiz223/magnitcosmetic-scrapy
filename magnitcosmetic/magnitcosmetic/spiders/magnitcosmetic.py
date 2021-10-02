@@ -115,17 +115,24 @@ class MagnitcosmeticSpider(scrapy.Spider):
             'variants': 1
         }
 
-        yield scrapy.Request(
-            url=self.catalog_load_remains_url,
-            body=self._get_request_body_for_get_price(response),
-            method='POST',
-            headers={'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-                     'X-Requested-With': 'XMLHttpRequest',
-                     'Referer': response.url},
-            meta={'product_data': product_data},
-            callback=self.parse_price,
-            dont_filter=True
-        )
+        body = self._get_request_body_for_get_price(response)
+        if body:  # шлём POST-запрос только если есть что слать
+            yield scrapy.Request(
+                url=self.catalog_load_remains_url,
+                body=body,
+                method='POST',
+                headers={'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                         'X-Requested-With': 'XMLHttpRequest',
+                         'Referer': response.url},
+                meta={'product_data': product_data},
+                callback=self.parse_price,
+                dont_filter=True
+            )
+        else:  # не сохранять сломанные товары?
+            # предполагается, что товар сломан - о нём нельзя вытащить цену и другие данные
+            # хороший пример - https://magnitcosmetic.ru/catalog/bytovaya_khimiya/stiralnye_poroshki_geli_kapsuly/52098/
+            # на момент написания комментария карточка товара выглядит так: https://i.imgur.com/UnNo3pl.png
+            yield product_data
 
     def parse_price(self, response):
         product_data: dict = response.meta.get('product_data')
@@ -179,8 +186,5 @@ class MagnitcosmeticSpider(scrapy.Spider):
             product_key = [key for key in data_json.keys()][0]
             product_value = data_json.get(product_key, 0)
         except (TypeError, IndexError, AttributeError, json.JSONDecodeError):
-            product_key = ''
-            product_value = ''
-
-        body: str = f'SHOP_XML_CODE={self.shop_xml_code}&PRODUCTS%5B{product_key}%5D={product_value}&enigma=1&ism=Y'
-        return body
+            return None
+        return f'SHOP_XML_CODE={self.shop_xml_code}&PRODUCTS%5B{product_key}%5D={product_value}&enigma=1&ism=Y'
