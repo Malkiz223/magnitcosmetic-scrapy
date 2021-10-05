@@ -4,6 +4,8 @@ from datetime import datetime
 
 import scrapy
 
+from ..items import MagnitcosmeticItem
+
 
 class MagnitcosmeticSpider(scrapy.Spider):
     name = 'magnitcosmetic'
@@ -12,6 +14,7 @@ class MagnitcosmeticSpider(scrapy.Spider):
         'https://magnitcosmetic.ru/catalog/bytovaya_khimiya/stiralnye_poroshki_geli_kapsuly/?perpage=96',
         'https://magnitcosmetic.ru/catalog/tovary_dlya_doma/stroitelstvo_i_remont/?perpage=96'
     ]  # 237 + 208 = 445 товаров на 01.10.2021
+    items = MagnitcosmeticItem()
     shop_xml_code = '19077662880'  # г. Москва, ул. Абельмановская, 6, 18850594800 - shop_xml_code по умолчанию
     # шлём POST-запрос по данному url, чтобы получить данные о цене товара
     catalog_load_remains_url = 'https://magnitcosmetic.ru/local/ajax/load_remains/catalog_load_remains.php'
@@ -97,23 +100,21 @@ class MagnitcosmeticSpider(scrapy.Spider):
 
         marketing_tag = 'Акция' if response.css('.event__product-title') else ''  # блок есть только во время акции
 
-        product_data = {
-            'timestamp': datetime.utcnow(),
-            'RPC': product_id,
-            'url': response.url,
-            'title': product_title,
-            'marketing_tags': marketing_tag,
-            'brand': brand,
-            'section': section,
-            'assets': {
-                'main_image': product_image,
-                'set_images': [],  # обязательно ли указывать?
-                'view360': [],  # сайт не использует такие
-                'video': []  # современные технологии
-            },
-            'metadata': metadata,
-            'variants': 1
+        self.items['timestamp'] = datetime.utcnow()
+        self.items['RPC'] = product_id
+        self.items['url'] = response.url
+        self.items['title'] = product_title
+        self.items['marketing_tags'] = marketing_tag
+        self.items['brand'] = brand
+        self.items['section'] = section
+        self.items['assets'] = {
+            'main_image': product_image,
+            'set_images': [],  # обязательно ли указывать?
+            'view360': [],  # сайт не использует такие
+            'video': []  # современные технологии
         }
+        self.items['metadata'] = metadata
+        self.items['variants'] = 1
 
         body = self._get_request_body_for_get_price(response)
         if body:  # шлём POST-запрос только если есть что слать
@@ -124,7 +125,6 @@ class MagnitcosmeticSpider(scrapy.Spider):
                 headers={'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
                          'X-Requested-With': 'XMLHttpRequest',
                          'Referer': response.url},
-                meta={'product_data': product_data},
                 callback=self.parse_price,
                 dont_filter=True
             )
@@ -132,7 +132,7 @@ class MagnitcosmeticSpider(scrapy.Spider):
             # предполагается, что товар сломан - о нём нельзя вытащить цену и другие данные
             # хороший пример - https://magnitcosmetic.ru/catalog/bytovaya_khimiya/stiralnye_poroshki_geli_kapsuly/52098/
             # на момент написания комментария карточка товара выглядит так: https://i.imgur.com/UnNo3pl.png
-            yield product_data
+            yield self.items
 
     def parse_price(self, response):
         product_data: dict = response.meta.get('product_data')
@@ -155,16 +155,17 @@ class MagnitcosmeticSpider(scrapy.Spider):
             sale_percent = 0
         sale_tag = f'Скидка {sale_percent}%' if sale_percent else ''
 
-        product_data['price_data'] = {
+        self.items['price_data'] = {
             'current': float(current_price),
             'original': float(original_price),
             'sale_tag': sale_tag
         }
-        product_data['stock'] = {
+        self.items['stock'] = {
             'in_stock': bool(quantity),
             'count': 0
         }
-        yield product_data
+
+        yield self.items
 
     def _get_request_body_for_get_price(self, response):
         """
