@@ -1,9 +1,10 @@
 import json
 import random
-import re
 from datetime import datetime
 
 import scrapy
+
+from ..items import MagnitcosmeticItem
 
 
 class MagnitcosmeticSpider(scrapy.Spider):
@@ -13,6 +14,7 @@ class MagnitcosmeticSpider(scrapy.Spider):
         'https://magnitcosmetic.ru/catalog/bytovaya_khimiya/stiralnye_poroshki_geli_kapsuly/?perpage=96',
         'https://magnitcosmetic.ru/catalog/tovary_dlya_doma/stroitelstvo_i_remont/?perpage=96'
     ]  # 237 + 208 = 445 товаров на 01.10.2021
+    items = MagnitcosmeticItem()
     shop_xml_code = '19077662880'  # г. Москва, ул. Абельмановская, 6, 18850594800 - shop_xml_code по умолчанию
     # шлём POST-запрос по данному url, чтобы получить данные о цене товара
     catalog_load_remains_url = 'https://magnitcosmetic.ru/local/ajax/load_remains/catalog_load_remains.php'
@@ -98,59 +100,46 @@ class MagnitcosmeticSpider(scrapy.Spider):
 
         marketing_tag = 'Акция' if response.css('.event__product-title') else ''  # блок есть только во время акции
 
-        product_data = {
-            'timestamp': datetime.utcnow(),
-            'RPC': product_id,
-            'url': response.url,
-            'title': product_title,
-            'marketing_tags': marketing_tag,
-            'brand': brand,
-            'section': section,
-            'assets': {
-                'main_image': product_image,
-                'set_images': [],  # обязательно ли указывать?
-                'view360': [],  # сайт не использует такие
-                'video': []  # современные технологии
-            },
-            'metadata': metadata,
-            'variants': 1
+        self.items['timestamp'] = datetime.utcnow()
+        self.items['RPC'] = product_id
+        self.items['url'] = response.url
+        self.items['title'] = product_title
+        self.items['marketing_tags'] = marketing_tag
+        self.items['brand'] = brand
+        self.items['section'] = section
+        self.items['assets'] = {
+            'main_image': product_image,
+            'set_images': [],  # обязательно ли указывать?
+            'view360': [],  # сайт не использует такие
+            'video': []  # современные технологии
         }
+        self.items['metadata'] = metadata
+        self.items['variants'] = 1
 
-        # TODO перенести в отдельную функцию, передавать response и product_data?
-
-        # пытаемся найти PRODUCT_XML_CODE, нужен для POST-запроса, чтобы узнать цену товара
-        xml_code_pattern = re.compile(r"PRODUCT_XML_CODE = (.*)")  # var PROD...CODE = {"123": 123}
-        tag_with_product_xml_code = response.xpath("//script[contains(., 'PRODUCT_XML_CODE')]/text()").get()
-        # если товар частично убран с сайта, то PRODUCT_XML_CODE будет равен строке '[0]'
-        # пример товара: https://magnitcosmetic.ru/catalog/bytovaya_khimiya/stiralnye_poroshki_geli_kapsuly/52098/
-        try:
-            json_with_product_ids: str = xml_code_pattern.search(tag_with_product_xml_code).group(1)
-            data_json: dict = json.loads(json_with_product_ids)
-            product_key = [key for key in data_json.keys()][0]
-            product_value = data_json.get(product_key, 0)
-        except (TypeError, IndexError, AttributeError, json.JSONDecodeError):
-            product_key = ''
-            product_value = ''
-
-        body: str = f'SHOP_XML_CODE={self.shop_xml_code}&PRODUCTS%5B{product_key}%5D={product_value}&enigma=1&ism=Y'
-        yield scrapy.Request(
-            url=self.catalog_load_remains_url,
-            body=body,
-            method='POST',
-            headers={'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-                     'X-Requested-With': 'XMLHttpRequest',
-                     'Referer': response.url},
-            meta={'product_data': product_data},
-            callback=self.parse_price,
-            dont_filter=True
-        )
+        body = self._get_request_body_for_get_price(response)
+        if body:  # шлём POST-запрос только если есть что слать
+            yield scrapy.Request(
+                url=self.catalog_load_remains_url,
+                body=body,
+                method='POST',
+                headers={'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                         'X-Requested-With': 'XMLHttpRequest',
+                         'Referer': response.url},
+                callback=self.parse_price,
+                dont_filter=True
+            )
+        else:  # не сохранять сломанные товары?
+            # предполагается, что товар сломан - о нём нельзя вытащить цену и другие данные
+            # хороший пример - https://magnitcosmetic.ru/catalog/bytovaya_khimiya/stiralnye_poroshki_geli_kapsuly/52098/
+            # на момент написания комментария карточка товара выглядит так: https://i.imgur.com/UnNo3pl.png
+            yield self.items
 
     def parse_price(self, response):
         product_data: dict = response.meta.get('product_data')
         price_dict: dict = json.loads(response.text)  # получаем от POST-запроса на catalog_load_remains.php
         try:
             price_data: dict = price_dict.get('data')[0]
-        except IndexError:
+        except (IndexError, TypeError):
             price_data = {}
         quantity = price_data.get('quantity')
         original_price = float(price_data.get('price', 0))  # сделать условную цену в -1, если не пришла цена?
@@ -166,13 +155,37 @@ class MagnitcosmeticSpider(scrapy.Spider):
             sale_percent = 0
         sale_tag = f'Скидка {sale_percent}%' if sale_percent else ''
 
-        product_data['price_data'] = {
+        self.items['price_data'] = {
             'current': float(current_price),
             'original': float(original_price),
             'sale_tag': sale_tag
         }
-        product_data['stock'] = {
+        self.items['stock'] = {
             'in_stock': bool(quantity),
             'count': 0
         }
-        yield product_data
+
+        yield self.items
+
+    def _get_request_body_for_get_price(self, response):
+        """
+        На странице товара есть тег <script>, содержащий информацию для идентификации товара. Эта информация
+        потребуется для POST-запроса к API сайта и получения актуальной цены на товар,
+        поскольку цена не указывается в теле базового HTML.
+
+        - SHOP_XML_CODE - код магазина, цену в котором мы пытаемся узнать. Указываем при инициализации класса.
+        - В оригинальном теле запроса указывается enigma, она находится в input.remains__detail::attr(value) страницы,
+        но API принимает запрос с любой ненулевой энигмой.
+        - В оригинальном теле запроса имеются параметры JUST_ONE, wru и type, которые можно опустить,
+        если параметр ism указать как Y (по умолчанию стоит N).
+        """
+        # если товар частично убран с сайта, то PRODUCT_XML_CODE будет равен строке '[0]'
+        # пример товара: https://magnitcosmetic.ru/catalog/bytovaya_khimiya/stiralnye_poroshki_geli_kapsuly/52098/
+        data = response.xpath("//script[contains(., 'PRODUCT_XML_CODE')]/text()").re('PRODUCT_XML_CODE = {(.*)')
+        try:
+            data_json: dict = json.loads(data[0])
+            product_key = [key for key in data_json.keys()][0]
+            product_value = data_json.get(product_key, 0)
+        except (TypeError, IndexError, AttributeError, json.JSONDecodeError):
+            return None
+        return f'SHOP_XML_CODE={self.shop_xml_code}&PRODUCTS%5B{product_key}%5D={product_value}&enigma=1&ism=Y'
