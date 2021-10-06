@@ -129,7 +129,7 @@ class MagnitcosmeticSpider(scrapy.Spider):
             yield self.item
 
     def parse_price(self, response):
-        product_data: dict = response.meta.get('product_data')
+        product_data: dict = json.loads(response.text)
         price_dict: dict = json.loads(response.text)  # получаем от POST-запроса на catalog_load_remains.php
         try:
             price_data: dict = price_dict.get('data')[0]
@@ -175,7 +175,7 @@ class MagnitcosmeticSpider(scrapy.Spider):
         """
         # если товар частично убран с сайта, то PRODUCT_XML_CODE будет равен строке '[0]'
         # пример товара: https://magnitcosmetic.ru/catalog/bytovaya_khimiya/stiralnye_poroshki_geli_kapsuly/52098/
-        data = response.xpath("//script[contains(., 'PRODUCT_XML_CODE')]/text()").re('PRODUCT_XML_CODE = {(.*)')
+        data = response.xpath("//script[contains(., 'PRODUCT_XML_CODE')]/text()").re('PRODUCT_XML_CODE = ({.*)')
         try:
             data_json: dict = json.loads(data[0])
             product_key = [key for key in data_json.keys()][0]
