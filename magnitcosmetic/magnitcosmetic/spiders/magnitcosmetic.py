@@ -9,7 +9,7 @@ from ..items import MagnitcosmeticItem
 
 class MagnitcosmeticSpider(scrapy.Spider):
     name = 'magnitcosmetic'
-    allowed_domains = ['https://magnitcosmetic.ru/']
+    allowed_domains = ['magnitcosmetic.ru']
     start_urls = [
         'https://magnitcosmetic.ru/catalog/bytovaya_khimiya/stiralnye_poroshki_geli_kapsuly/?perpage=96',
         'https://magnitcosmetic.ru/catalog/tovary_dlya_doma/stroitelstvo_i_remont/?perpage=96'
