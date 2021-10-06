@@ -49,15 +49,12 @@ class MagnitcosmeticSpider(scrapy.Spider):
 
     def parse_catalog(self, response):
         all_products = response.css('.catalog__item')
-        product_urls = []
         for product in all_products:
             product_url = product.css('.product__link::attr(href)').get()
-            product_url = response.urljoin(product_url)
-            product_urls.append(product_url)
-            yield scrapy.Request(url=product_url,
-                                 callback=self.parse_details,
-                                 meta={'proxy': random.choice(self.proxy_list)},
-                                 dont_filter=True)
+            yield response.follow(url=product_url,
+                                  callback=self.parse_details,
+                                  meta={'proxy': random.choice(self.proxy_list)},
+                                  dont_filter=True)
 
         current_page: str = response.css('.curPage::text').get()
         total_pages: str = response.css('.pageCount::text').get()
