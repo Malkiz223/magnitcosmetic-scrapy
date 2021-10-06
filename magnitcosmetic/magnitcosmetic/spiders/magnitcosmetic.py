@@ -53,8 +53,7 @@ class MagnitcosmeticSpider(scrapy.Spider):
             product_url = product.css('.product__link::attr(href)').get()
             yield response.follow(url=product_url,
                                   callback=self.parse_details,
-                                  meta={'proxy': random.choice(self.proxy_list)},
-                                  dont_filter=True)
+                                  meta={'proxy': random.choice(self.proxy_list)})
 
         current_page: str = response.css('.curPage::text').get()
         total_pages: str = response.css('.pageCount::text').get()
@@ -63,8 +62,7 @@ class MagnitcosmeticSpider(scrapy.Spider):
             next_page_number = int(current_page) + 1
             next_page_url = response.urljoin(f'?perpage=96&PAGEN_1={next_page_number}')
             yield scrapy.Request(url=next_page_url,
-                                 callback=self.parse_catalog,
-                                 dont_filter=True)
+                                 callback=self.parse_catalog)
 
     def parse_details(self, response):
         product_title: str = response.css('.action-card__name::text').get()
