@@ -65,10 +65,9 @@ class MagnitcosmeticSpider(scrapy.Spider):
         if has_next_page and current_page.isdigit():  # isdigit() вместо except ValueError, в теории можно удалить
             next_page_number = int(current_page) + 1
             next_page_url = response.urljoin(f'?perpage=96&PAGEN_1={next_page_number}')
-            yield scrapy.Request(
-                url=next_page_url,
-                callback=self.parse_catalog,
-                dont_filter=True)
+            yield scrapy.Request(url=next_page_url,
+                                 callback=self.parse_catalog,
+                                 dont_filter=True)
 
     def parse_details(self, response):
         product_title: str = response.css('.action-card__name::text').get()
